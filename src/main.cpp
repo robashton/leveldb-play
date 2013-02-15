@@ -1,5 +1,7 @@
 #include <iostream>
 #include <sstream>
+#include <vector>
+#include <iterator>
 
 #include "docdb.h"
 
@@ -9,6 +11,7 @@ int nextOperation();
 int createNewDocument();
 int checkLastStatus();
 int getDocument();
+int getAllNewDocuments();
 
 DocDB* store;
 
@@ -25,6 +28,7 @@ int nextOperation() {
   std::cout << "Specify an operation" << std::endl;
   std::cout << "0: Push a document" << std::endl;
   std::cout << "1: Get a document" << std::endl;
+  std::cout << "2: Get all new documents" << std::endl;
 
   std::cin >> operation;
 
@@ -32,6 +36,8 @@ int nextOperation() {
     createNewDocument();
   else if(operation == "1")
     getDocument();
+  else if(operation == "2")
+    getAllNewDocuments();
   else
     nextOperation();
 }
@@ -63,6 +69,18 @@ int getDocument() {
   std::cout << "Got a document: " << document << std::endl;
 
   checkLastStatus();
+}
+
+int getAllNewDocuments() {
+  std::vector<std::string> keys;
+  store->GetNewDocuments(keys);
+
+  std::cout << "Searched for documents, listing keys: " << std::endl;
+
+  for(std::vector<std::string>::iterator it = keys.begin(); it != keys.end() ; ++it) {
+    std::cout << "Document: " << *it << std::endl;
+  }
+  nextOperation();
 }
 
 int checkLastStatus() {
@@ -115,6 +133,7 @@ int openreadtests() {
   std::cout << double( clock() - startTime ) / (double)CLOCKS_PER_SEC<< " seconds." << std::endl;
 
   delete[] arbitraryData;
+  delete it;
   delete db;
   std::cout << "Closed database" << std::endl;
 }

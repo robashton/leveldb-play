@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdlib.h>
+#include <vector>
 
 #define DOCPREFIX "/docs/";
 #define ETAGPREFIX "/etags/";
@@ -12,6 +13,7 @@ class DocDB {
       this->options.create_if_missing = true;
       this->writeoptions.sync = true;
       this->lastStatus = leveldb::DB::Open(options,location, &this->db);
+      this->lastIndexedEtag = 0;
     }
     ~DocDB() {
       delete this->db;
@@ -19,6 +21,20 @@ class DocDB {
 
     leveldb::Status LastStatus() {
       return this->lastStatus;
+    }
+
+    int GetNewDocuments(std::vector<std::string>& keys) {
+      std::string startkey;
+      startkey = ETAGPREFIX;
+      startkey += this->lastIndexedEtag;
+      std::string endkey = "/zzz";
+
+      leveldb::Iterator* it = this->db->NewIterator(leveldb::ReadOptions());
+      for (it->Seek(startkey); it->Valid() && it->key().ToString() <= endkey; it->Next()) {
+        std::string value = it->value().ToString();
+        keys.push_back(value);
+      }
+      delete it;
     }
 
     void Get(std::string id, std::string* doc) {
