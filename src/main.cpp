@@ -1,14 +1,22 @@
-#include <leveldb/db.h>
 #include <iostream>
 #include <sstream>
+
+#include "docdb.h"
 
 #define SIZE 1024 * 1024 * 10
 
 int nextOperation();
 int createNewDocument();
+int checkLastStatus();
+int getDocument();
+
+DocDB* store;
 
 int main() {
+  store = new DocDB("play/lol");
+  checkLastStatus();
   nextOperation();
+  delete store;
 }
 
 int nextOperation() {
@@ -16,11 +24,14 @@ int nextOperation() {
 
   std::cout << "Specify an operation" << std::endl;
   std::cout << "0: Push a document" << std::endl;
+  std::cout << "1: Get a document" << std::endl;
 
   std::cin >> operation;
 
   if(operation == "0")
     createNewDocument();
+  else if(operation == "1")
+    getDocument();
   else
     nextOperation();
 }
@@ -35,6 +46,27 @@ int createNewDocument() {
   std::cin >> document;
 
   std::cout << "Creating a document with id " << id << std::endl;
+  store->Put(id, document);
+
+  checkLastStatus();
+}
+
+int getDocument() {
+  std::string id;
+  std::string document;
+
+  std::cout << "Give me a key for the document" << std::endl;
+  std::cin >> id;
+
+  store->Get(id, &document);
+
+  std::cout << "Got a document: " << document << std::endl;
+
+  checkLastStatus();
+}
+
+int checkLastStatus() {
+  std::cout << "Last status: " << store->LastStatus().ok() << std::endl;
 }
 
 int openreadtests() {
