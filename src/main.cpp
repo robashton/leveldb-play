@@ -4,7 +4,40 @@
 
 #define SIZE 1024 * 1024 * 10
 
+int nextOperation();
+int createNewDocument();
+
 int main() {
+  nextOperation();
+}
+
+int nextOperation() {
+  std::string operation;
+
+  std::cout << "Specify an operation" << std::endl;
+  std::cout << "0: Push a document" << std::endl;
+
+  std::cin >> operation;
+
+  if(operation == "0")
+    createNewDocument();
+  else
+    nextOperation();
+}
+
+int createNewDocument() {
+  std::string document;
+  std::string id;
+
+  std::cout << "Give me a key for the document" << std::endl;
+  std::cin >> id;
+  std::cout << "Give me the content for the document" << std::endl;
+  std::cin >> document;
+
+  std::cout << "Creating a document with id " << id << std::endl;
+}
+
+int openreadtests() {
   leveldb::DB* db;
   leveldb::Options options;
   options.create_if_missing = true;
