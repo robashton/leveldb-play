@@ -6,4 +6,4 @@ run:
 	nunit-console  Test.dll
 
 build: 
-	mono-csc -r:nunit.framework.dll -lib:./lib Test.cs /t:library
+	mono-csc -debug+ -r:nunit.framework.dll -lib:./lib Test.cs /t:library

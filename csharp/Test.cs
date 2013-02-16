@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Linq;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -8,34 +9,53 @@ using NUnit.Framework;
 public class StorageTransaction {
 
   private int id;
+
   private List<Action<Storage>> operations = new List<Action<Storage>>();
-  private List<int> activeTransactions = new List<int>();
+  private StorageTransaction[] trackedTransactions;
+  private int transactionCountTrackingMe = 1;
+  
 
   public int Id { get { return id; }}
+  public int RefCount { get { return transactionCountTrackingMe; } }
 
-  internal int RelatedTransactionCount { get { return activeTransactions.Count(); } }
-
-  public StorageTransaction(int id, int[] activeTransactions) {
+  public StorageTransaction(int id, StorageTransaction[] activeTransactions) {
     this.id = id;
-    this.activeTransactions.AddRange(activeTransactions);
+    this.trackedTransactions = activeTransactions;
+    foreach(var otherTransaction in this.trackedTransactions) {
+      otherTransaction.IncreaseRefCount();
+    }
   }
-
 
   internal void AddOperation(Action<Storage> operation) {
     operations.Add(operation);
   }
 
+  internal void Rollback() {
+    this.Complete();
+  }
+
   internal void Commit(Storage storage) {
-    // Whatevs, LevelDB would handle failure for us here
-    this.operations.ForEach(action => action(storage));
+    try {
+      this.operations.ForEach(action => action(storage));
+    }
+    finally {
+      this.Complete();
+    }
   }
 
-  internal void AddRelatedTransaction(int id) {
-    this.activeTransactions.Add(id);
+  private void Complete() {
+    this.DecreaseRefCount();
+    foreach(var otherTransaction in this.trackedTransactions) {
+      otherTransaction.DecreaseRefCount();
+    }
   }
 
-  internal void RemoveRelatedTransaction(int id) {
-    this.activeTransactions.Remove(id);
+  internal void IncreaseRefCount() {
+    Interlocked.Increment(ref this.transactionCountTrackingMe);
+  }
+
+  internal void DecreaseRefCount() {
+    Interlocked.Decrement(ref this.transactionCountTrackingMe);
   }
 }
 
@@ -53,19 +73,26 @@ public class Storage {
   public void Batch(Action<StorageAccessor> actions) {
     var transaction = this.CreateTransaction();
     var accessor = new StorageAccessor(this, transaction);
-    actions(accessor);
+    try {
+      actions(accessor);
+    } catch(Exception ex) {
+      this.RollbackTransaction(transaction);
+      throw;
+    }
     this.CommitTransaction(transaction);
   }
 
   private StorageTransaction CreateTransaction() {
-    // This is not thread-safe, it might need a lock
+    Interlocked.Increment(ref this.lastTransactionId);
     var currentTransactions = this.activeTransactions.ToArray();
-    var transaction = new StorageTransaction(++this.lastTransactionId, currentTransactions.Select(x=> x.Key).ToArray());
-    this.activeTransactions.TryAdd(transaction.Id, transaction);
-    foreach(var kv in currentTransactions) {
-      kv.Value.AddRelatedTransaction(transaction.Id);
-    }
+    var transaction = new StorageTransaction(this.lastTransactionId, currentTransactions.Select(x=> x.Value).ToArray());
+    this.activeTransactions.TryAdd(this.lastTransactionId, transaction);
     return transaction;
+  }
+
+  private void RollbackTransaction(StorageTransaction transaction) {
+    transaction.Rollback();
+    this.TryPruneObsoleteTransactions();
   }
 
   private void CommitTransaction(StorageTransaction transaction) {
@@ -73,32 +100,44 @@ public class Storage {
     lock(this.backing) {
       transaction.Commit(this);
     }
-
-    // This is not thread-safe, it might need a lock
-    var currentTransactions = this.activeTransactions.ToArray();
-    List<int> transactionsToClear = new List<int>();
-    foreach(var kv in currentTransactions) {
-      kv.Value.RemoveRelatedTransaction(transaction.Id);
-      if(kv.Value.RelatedTransactionCount == 0)
-        transactionsToClear.Add(kv.Key);
-    }
+    this.TryPruneObsoleteTransactions();
   }
 
-  private void ClearDataForTransactionIds(List<int> ids) {
+  private void TryPruneObsoleteTransactions() {
+    var currentTransactions = this.activeTransactions.Values.OrderBy(x=> x.Id).ToArray();
+
+    var transactionsWeCanRemove = new List<int>();
+    foreach(var transaction in currentTransactions) {
+      if(transaction.RefCount == 0)
+        transactionsWeCanRemove.Add(transaction.Id);
+      else
+        break;
+    }
+
     List<string> keysToClear = new List<string>();
+
     foreach(var kv in this.keysToTransactionId) {
-      if(ids.Contains(kv.Value))
+      if(transactionsWeCanRemove.Contains(kv.Value))
         keysToClear.Add(kv.Key);
     }
+
     keysToClear.ForEach(key=> {
       int ignored;
       this.keysToTransactionId.TryRemove(key, out ignored);
+    });
+
+    transactionsWeCanRemove.ForEach(key => {
+      StorageTransaction ignored;
+      this.activeTransactions.TryRemove(key, out ignored);
     });
   }
 
   public Object Get(string id, StorageTransaction transaction) {
     // This would ordinarily be using a Snapshot for the transaction in LevelDB
-    return this.backing[id];
+    Object outValue;
+    if(this.backing.TryGetValue(id, out outValue))
+      return outValue;
+    return null;
   }
 
   public void Put(string id, Object obj, StorageTransaction transaction) {
@@ -156,25 +195,12 @@ public class StorageAccessor {
   }
 }
 
-public static class Program {
-  public static int Main(String[] args) {
-
-    var storage = new Storage();
-
-    storage.Batch(x=> {
-
-    });
-
-
-    return 0;
-  }
-}
 
 [TestFixture]
 public class Tests
 {
   [Test]
-  public void Can_Store_Single_Document() {
+  public void Can_store_single_document() {
     var storage = new Storage();
     storage.Batch(x=> x.Put("1", "Hello"));
 
@@ -186,7 +212,7 @@ public class Tests
   }
 
   [Test]
-  public void Can_Store_Multiple_Document() {
+  public void Can_store_multiple_document() {
     var storage = new Storage();
     storage.Batch(x=>  {
       x.Put("1", "Hello");
@@ -204,7 +230,7 @@ public class Tests
   }
 
   [Test]
-  public void Can_Delete_Single_Document() {
+  public void Can_delete_single_document() {
     var storage = new Storage();
     storage.Batch(x=> x.Put("1", "Hello"));
     storage.Batch(x=> x.Delete("1"));
@@ -212,6 +238,58 @@ public class Tests
     storage.Batch(x=> {
       doc = (string)x.Get("1");
     });
-    Assert.That(doc, null);
+    Assert.That(doc, Is.EqualTo(null));
+  }
+
+  [Test]
+  public void Deleting_updating_document_before_update_transaction_is_closed_throws_exception() {
+    var storage = new Storage();
+    storage.Batch(x=> x.Put("1", "Hello"));
+    Exception thrown = null;
+    storage.Batch(x=> {
+      x.Put("1", "Overwrite");
+      try {
+        storage.Batch(y=> y.Delete("1"));
+      } catch(Exception ex) {
+        thrown = ex;
+      }
+    });
+    Assert.NotNull(thrown);
+  }
+
+  [Test]
+  public void Putting_two_documents_with_same_key_in_overlapping_transactions_throws_exception() {
+    var storage = new Storage();
+    Exception thrown = null;
+    storage.Batch(x=> {
+      x.Put("1", "Hello");
+      try {
+        storage.Batch(y=> y.Put("1", "Another"));
+      } catch(Exception ex) {
+        thrown = ex;
+      }
+    }); 
+    Assert.NotNull(thrown);
+  }
+
+  [Test]
+  public void A_concurrency_exception_leaves_the_database_in_a_usable_state() {
+    var storage = new Storage();
+    Exception thrown = null;
+    storage.Batch(x=> {
+      x.Put("1", "Hello");
+      try {
+        storage.Batch(y=> y.Put("1", "Another"));
+      } catch(Exception ex) {
+        thrown = ex;
+      }
+    }); 
+    storage.Batch(x=> x.Put("1", "Replaced"));
+    string doc = null;
+    storage.Batch(x=> {
+      doc = (string)x.Get("1");
+    });
+    Assert.That(doc, Is.EqualTo("Replaced"));
+    Assert.NotNull(thrown);
   }
 }
