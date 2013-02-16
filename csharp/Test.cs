@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -8,11 +9,15 @@ public class StorageTransaction {
 
   private int id;
   private List<Action<Storage>> operations = new List<Action<Storage>>();
+  private List<int> activeTransactions = new List<int>();
 
   public int Id { get { return id; }}
 
-  public StorageTransaction(int id) {
+  internal int RelatedTransactionCount { get { return activeTransactions.Count(); } }
+
+  public StorageTransaction(int id, int[] activeTransactions) {
     this.id = id;
+    this.activeTransactions.AddRange(activeTransactions);
   }
 
 
@@ -20,16 +25,25 @@ public class StorageTransaction {
     operations.Add(operation);
   }
 
-
   internal void Commit(Storage storage) {
     // Whatevs, LevelDB would handle failure for us here
     this.operations.ForEach(action => action(storage));
+  }
+
+  internal void AddRelatedTransaction(int id) {
+    this.activeTransactions.Add(id);
+  }
+
+  internal void RemoveRelatedTransaction(int id) {
+    this.activeTransactions.Remove(id);
   }
 }
 
 public class Storage {
   private ConcurrentDictionary<string, object> backing = new ConcurrentDictionary<string, object>();
   private ConcurrentDictionary<string, int> keysToTransactionId = new ConcurrentDictionary<string, int>();
+  private ConcurrentDictionary<int, StorageTransaction> activeTransactions = new ConcurrentDictionary<int, StorageTransaction>();
+
   private int lastTransactionId = 0;
 
   public Storage() {
@@ -44,17 +58,43 @@ public class Storage {
   }
 
   private StorageTransaction CreateTransaction() {
-    var transaction = new StorageTransaction(++this.lastTransactionId);
+    // This is not thread-safe, it might need a lock
+    var currentTransactions = this.activeTransactions.ToArray();
+    var transaction = new StorageTransaction(++this.lastTransactionId, currentTransactions.Select(x=> x.Key).ToArray());
+    this.activeTransactions.TryAdd(transaction.Id, transaction);
+    foreach(var kv in currentTransactions) {
+      kv.Value.AddRelatedTransaction(transaction.Id);
+    }
     return transaction;
   }
 
   private void CommitTransaction(StorageTransaction transaction) {
-    // LevelDB.BatchWrite
+    // This would be LevelDB.BatchWrite, I just use a database wide lock, mileage may vary
     lock(this.backing) {
       transaction.Commit(this);
     }
+
+    // This is not thread-safe, it might need a lock
+    var currentTransactions = this.activeTransactions.ToArray();
+    List<int> transactionsToClear = new List<int>();
+    foreach(var kv in currentTransactions) {
+      kv.Value.RemoveRelatedTransaction(transaction.Id);
+      if(kv.Value.RelatedTransactionCount == 0)
+        transactionsToClear.Add(kv.Key);
+    }
   }
 
+  private void ClearDataForTransactionIds(List<int> ids) {
+    List<string> keysToClear = new List<string>();
+    foreach(var kv in this.keysToTransactionId) {
+      if(ids.Contains(kv.Value))
+        keysToClear.Add(kv.Key);
+    }
+    keysToClear.ForEach(key=> {
+      int ignored;
+      this.keysToTransactionId.TryRemove(key, out ignored);
+    });
+  }
 
   public Object Get(string id, StorageTransaction transaction) {
     // This would ordinarily be using a Snapshot for the transaction in LevelDB

@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <!--This file represents the results of running a test suite-->
-<test-results name="/home/robashton/src/leveldbuse/csharp/Test.dll" total="3" errors="1" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2013-02-16" time="13:45:47">
+<test-results name="/home/robashton/src/leveldbuse/csharp/Test.dll" total="3" errors="1" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2013-02-16" time="14:14:26">
   <environment nunit-version="2.6.0.0" clr-version="4.0.30319.1" os-version="Unix 3.2.0.3" platform="Unix" cwd="/home/robashton/src/leveldbuse/csharp" machine-name="ashton-mba" user="robashton" user-domain="ashton-mba" />
   <culture-info current-culture="en-GB" current-uiculture="en-GB" />
-  <test-suite type="Assembly" name="/home/robashton/src/leveldbuse/csharp/Test.dll" executed="True" result="Failure" success="False" time="0.084" asserts="0">
+  <test-suite type="Assembly" name="/home/robashton/src/leveldbuse/csharp/Test.dll" executed="True" result="Failure" success="False" time="0.100" asserts="0">
     <results>
-      <test-suite type="TestFixture" name="Tests" executed="True" result="Failure" success="False" time="0.077" asserts="0">
+      <test-suite type="TestFixture" name="Tests" executed="True" result="Failure" success="False" time="0.093" asserts="0">
         <results>
-          <test-case name="Tests.Can_Delete_Single_Document" executed="True" result="Error" success="False" time="0.017" asserts="0">
+          <test-case name="Tests.Can_Delete_Single_Document" executed="True" result="Error" success="False" time="0.028" asserts="0">
             <failure>
               <message><![CDATA[System.Exception : This should be a concurrency exception]]></message>
-              <stack-trace><![CDATA[at Storage.<Delete>m__4 (System.String key, Int32 oldValue) [0x00000] in <filename unknown>:0
+              <stack-trace><![CDATA[at Storage.<Delete>m__6 (System.String key, Int32 oldValue) [0x00000] in <filename unknown>:0
 at System.Collections.Concurrent.ConcurrentDictionary`2+<AddOrUpdate>c__AnonStorey25[System.String,System.Int32].<>m__22 (KeyValuePair`2 e) [0x00000] in <filename unknown>:0
 at (wrapper delegate-invoke) <Module>:invoke_KeyValuePair`2<string, int>__this___KeyValuePair`2<string, int> (System.Collections.Generic.KeyValuePair`2<string, int>)
 at System.Collections.Concurrent.SplitOrderedList`2[System.String,System.Collections.Generic.KeyValuePair`2[System.String,System.Int32]].InsertOrUpdate (UInt32 key, System.String subKey, System.Func`1 addGetter, System.Func`2 updateGetter) [0x00000] in <filename unknown>:0
 at System.Collections.Concurrent.ConcurrentDictionary`2[System.String,System.Int32].AddOrUpdate (System.String key, System.Func`2 addValueFactory, System.Func`3 updateValueFactory) [0x00000] in <filename unknown>:0
 at Storage.Delete (System.String id, .StorageTransaction transaction) [0x00000] in <filename unknown>:0
 at StorageAccessor.Delete (System.String id) [0x00000] in <filename unknown>:0
-at Tests.<Can_Delete_Single_Document>m__D (.StorageAccessor x) [0x00000] in <filename unknown>:0
+at Tests.<Can_Delete_Single_Document>m__F (.StorageAccessor x) [0x00000] in <filename unknown>:0
 at Storage.Batch (System.Action`1 actions) [0x00000] in <filename unknown>:0
 at Tests.Can_Delete_Single_Document () [0x00000] in <filename unknown>:0
 ]]></stack-trace>
